@@ -1,8 +1,6 @@
 
 
-# README.md
-
-## Lance Data Viewer (v0.1) — read-only web UI for Lance datasets
+# Lance Data Viewer (v0.1) - A read-only web UI for Lance datasets
 
 Browse Lance tables from your local machine in a simple web UI. No database to set up. Mount a folder and go.
 
@@ -46,12 +44,6 @@ A folder containing Lance tables (as created by Lance/LanceDB). The app lists ta
 - Server-side pagination with inline controls.
 - Column selection and filtering.
 - Responsive layout optimized for data viewing.
-
-### Health check
-
-```
-GET http://localhost:8080/healthz
-```
 
 ### Configuration (optional)
 
