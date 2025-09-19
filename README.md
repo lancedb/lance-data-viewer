@@ -11,7 +11,7 @@ Browse Lance tables from your local machine in a simple web UI. No database to s
 1. **Pull**
 
 ```bash
-docker pull ghcr.io/<owner>/lance-viewer:latest
+docker pull ghcr.io/gordonmurray/lance-data-viewer:latest
 ```
 
 2. **Run (mount your data)**
@@ -19,7 +19,7 @@ docker pull ghcr.io/<owner>/lance-viewer:latest
 ```bash
 docker run --rm -p 8080:8080 \
     -v /path/to/your/lance:/data:ro \
-    ghcr.io/<owner>/lance-viewer:latest
+    ghcr.io/gordonmurray/lance-data-viewer:latest
 ```
 
 3. **Open the UI**
@@ -38,7 +38,6 @@ A folder containing Lance tables (as created by Lance/LanceDB). The app lists ta
 - Schema view with vector column highlighting.
 - Server-side pagination with inline controls.
 - Column selection and filtering.
-- Vector columns render as compact **sparklines/heatstrips** (no giant arrays).
 - Responsive layout optimized for data viewing.
 
 ### Health check
@@ -47,8 +46,6 @@ A folder containing Lance tables (as created by Lance/LanceDB). The app lists ta
 GET http://localhost:8080/healthz
 ```
 
-*Note: `/healthz` follows Kubernetes health check conventions and is commonly used in cloud-native applications.*
-
 ### Configuration (optional)
 
 - **Port:** change host port with `-p 9000:8080`.
@@ -56,20 +53,19 @@ GET http://localhost:8080/healthz
 
 ### Images & registries
 
-- Primary: **GitHub Container Registry** (`ghcr.io/<owner>/lance-viewer:TAG`).
-- (Optional) Mirror to Docker Hub for convenience.
+- **GitHub Container Registry** (`ghcr.io/gordonmurray/lance-data-viewer:TAG`).
 
 ### Build and test locally
 
 ```bash
 # Build the Docker image
-docker build -f docker/Dockerfile -t lance-viewer:dev .
+docker build -f docker/Dockerfile -t lance-data-viewer:dev .
 
 # Make your Lance data readable (one-time setup)
 chmod -R o+rx data
 
 # Run with your data (replace 'data' with your lance folder path)
-docker run --rm -p 8080:8080 -v $(pwd)/data:/data:ro lance-viewer:dev
+docker run --rm -p 8080:8080 -v $(pwd)/data:/data:ro lance-data-viewer:dev
 
 # Open the web interface
 open http://localhost:8080
@@ -87,20 +83,16 @@ curl "http://localhost:8080/datasets/your-dataset/rows?limit=5"
 docker ps -q | xargs docker stop
 
 # Rebuild after code changes
-docker build -f docker/Dockerfile -t lance-viewer:dev .
+docker build -f docker/Dockerfile -t lance-data-viewer:dev .
 
 # Run in background
-docker run --rm -d -p 8080:8080 -v $(pwd)/data:/data:ro lance-viewer:dev
+docker run --rm -d -p 8080:8080 -v $(pwd)/data:/data:ro lance-data-viewer:dev
 
 # View logs
-docker logs $(docker ps -q --filter ancestor=lance-viewer:dev)
+docker logs $(docker ps -q --filter ancestor=lance-data-viewer:dev)
 ```
 
 ### Security notes
 
 - Container runs as non-root.
 - No authentication in v0.1; bind to localhost during development and run behind a reverse proxy if exposing.
-
-### License
-
-MIT
