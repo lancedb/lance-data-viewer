@@ -14,7 +14,14 @@ Browse Lance tables from your local machine in a simple web UI. No database to s
 docker pull ghcr.io/gordonmurray/lance-data-viewer:latest
 ```
 
-2. **Run (mount your data)**
+2. **Make your data readable (required)**
+
+```bash
+# Make your Lance data directory and all contents readable by the container
+chmod -R o+rx /path/to/your/lance
+```
+
+3. **Run (mount your data)**
 
 ```bash
 docker run --rm -p 8080:8080 \
@@ -22,7 +29,7 @@ docker run --rm -p 8080:8080 \
     ghcr.io/gordonmurray/lance-data-viewer:latest
 ```
 
-3. **Open the UI**
+4. **Open the UI**
 
 ```
 http://localhost:8080
