@@ -1,0 +1,18 @@
+[project]
+name = "lance-viewer"
+version = "0.1.0"
+description = "Read-only web viewer for Lance datasets"
+authors = [{name = "Lance Viewer", email = "noreply@example.com"}]
+license = {text = "MIT"}
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.104.1",
+    "uvicorn[standard]==0.24.0",
+    "lancedb==0.3.4",
+    "pyarrow==14.0.1",
+    "python-multipart==0.0.6",
+]
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"

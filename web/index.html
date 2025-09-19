@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lance Data Viewer</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Lance Data Viewer</h1>
+            <div class="health-status" id="healthStatus">Connecting...</div>
+        </header>
+
+        <main class="main-content">
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <h3>Datasets</h3>
+                    <div class="dataset-list" id="datasetList">
+                        <div class="loading">Loading datasets...</div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section" id="columnSection" style="display: none;">
+                    <h3>Columns</h3>
+                    <div class="column-selector">
+                        <select id="columnSelect" multiple size="6" style="display: none;">
+                        </select>
+                        <div class="column-controls" style="display: none;">
+                            <button id="selectAllCols">All</button>
+                            <button id="selectNoneCols">None</button>
+                            <button id="applyColumns">Apply</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section" id="schemaSection" style="display: none;">
+                    <h3>Schema</h3>
+                    <div class="schema-display" id="schemaDisplay"></div>
+                </div>
+            </aside>
+
+            <section class="content">
+                <div class="dataset-header" id="datasetHeader" style="display: none;">
+                    <div class="header-row">
+                        <h2 id="datasetTitle">Select a dataset</h2>
+                        <div class="pagination-controls">
+                            <button id="prevPage" disabled>Previous</button>
+                            <span id="pageInfo">Page 1</span>
+                            <button id="nextPage" disabled>Next</button>
+                            <select id="pageSize">
+                                <option value="25">25 rows</option>
+                                <option value="50" selected>50 rows</option>
+                                <option value="100">100 rows</option>
+                                <option value="200">200 rows</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="data-section" id="dataSection" style="display: none;">
+                    <div class="table-container">
+                        <table id="dataTable">
+                            <thead id="tableHead"></thead>
+                            <tbody id="tableBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="loading" id="dataLoading" style="display: none;">Loading data...</div>
+                    <div class="error" id="dataError" style="display: none;"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div class="tooltip" id="tooltip" style="display: none;">
+        <div class="tooltip-content"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
