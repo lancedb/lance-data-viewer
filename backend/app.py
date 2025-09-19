@@ -256,7 +256,9 @@ async def get_vector_preview(
         logger.error(f"Error getting vector preview for {dataset_name}.{column}: {e}")
         raise HTTPException(status_code=500, detail="Failed to get vector preview")
 
-app.mount("/", StaticFiles(directory="/web", html=True), name="static")
+# Only mount static files if the directory exists (for production)
+if os.path.exists("/web"):
+    app.mount("/", StaticFiles(directory="/web", html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
