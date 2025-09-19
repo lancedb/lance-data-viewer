@@ -4,6 +4,8 @@
 
 Browse Lance tables from your local machine in a simple web UI. No database to set up. Mount a folder and go.
 
+![Lance Data Viewer Screenshot](lance_data_viewer_screenshot.png)
+
 ### Quick start (Docker)
 
 1. **Pull**
