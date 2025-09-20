@@ -2,6 +2,7 @@ name: Build and Release
 
 on:
   push:
+    branches: [ main ]
     tags:
       - 'v*'
   pull_request:
@@ -17,6 +18,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    strategy:
+      matrix:
+        lancedb: ["0.3.1", "0.3.4", "0.5", "0.16.0", "0.24.3"]
 
     steps:
     - name: Checkout repository
@@ -39,12 +43,12 @@ jobs:
       with:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=semver,pattern={{major}}
-          type=raw,value=latest,enable={{is_default_branch}}
+          type=ref,event=branch,suffix=-lancedb-${{ matrix.lancedb }}
+          type=ref,event=pr,suffix=-lancedb-${{ matrix.lancedb }}
+          type=semver,pattern=app-{{version}}_lancedb-${{ matrix.lancedb }}
+          type=raw,value=lancedb-${{ matrix.lancedb }}
+          type=raw,value=latest,enable=${{ matrix.lancedb == '0.24.3' && github.ref == 'refs/heads/main' }}
+          type=raw,value=stable,enable=${{ matrix.lancedb == '0.24.3' && startsWith(github.ref, 'refs/tags/') }}
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
@@ -55,11 +59,16 @@ jobs:
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         platforms: linux/amd64,linux/arm64
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-from: type=gha,scope=lancedb-${{ matrix.lancedb }}
+        cache-to: type=gha,mode=max,scope=lancedb-${{ matrix.lancedb }}
+        build-args: |
+          LANCEDB_VERSION=${{ matrix.lancedb }}
 
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        lancedb: ["0.3.1", "0.3.4", "0.5", "0.16.0", "0.24.3"]
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -72,7 +81,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r backend/deps.txt
+        pip install -c backend/constraints-${{ matrix.lancedb }}.txt \
+          -r backend/requirements.txt
         pip install httpx  # Required for TestClient
 
     - name: Test API endpoints
@@ -80,9 +90,14 @@ jobs:
         cd backend
         python -c "
         import app
+        import lancedb
+        import pyarrow
         from fastapi.testclient import TestClient
 
         client = TestClient(app.app)
+
+        # Print version information
+        print(f'Testing with LanceDB {lancedb.__version__}, PyArrow {pyarrow.__version__}')
 
         # Test health endpoint
         response = client.get('/healthz')
@@ -97,5 +112,5 @@ jobs:
         except Exception as e:
             print(f'✓ Datasets endpoint handled error gracefully: {e}')
 
-        print('All API tests passed!')
+        print('✓ All API tests passed!')
         "

@@ -1,0 +1,3 @@
+# Constraints for lancedb 0.3.4 (current working version)
+lancedb==0.3.4
+pyarrow==14.0.1

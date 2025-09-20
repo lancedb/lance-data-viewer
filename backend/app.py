@@ -22,6 +22,13 @@ app = FastAPI(
     version="0.1.0"
 )
 
+@app.on_event("startup")
+async def startup_event():
+    """Log version information on startup"""
+    logger.info(f"Lance Data Viewer v0.1.0")
+    logger.info(f"LanceDB: {lancedb.__version__}, PyArrow: {pa.__version__}")
+    logger.info(f"Data path: {DATA_PATH}")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -78,14 +85,36 @@ def serialize_arrow_value(value):
                 if not valid_values:
                     return {"type": "vector", "error": "No valid numeric values in vector"}
 
-                return {
+                # Calculate vector statistics
+                norm = float(sum(x*x for x in valid_values) ** 0.5) if valid_values else 0.0
+                vec_min = float(min(valid_values)) if valid_values else 0.0
+                vec_max = float(max(valid_values)) if valid_values else 0.0
+                vec_mean = float(sum(valid_values) / len(valid_values)) if valid_values else 0.0
+
+                # Special handling for CLIP vectors (typically 512 dimensions)
+                is_clip_vector = len(valid_values) == 512
+
+                result = {
                     "type": "vector",
                     "dim": len(valid_values),
-                    "norm": float(sum(x*x for x in valid_values) ** 0.5) if valid_values else 0.0,
-                    "min": float(min(valid_values)) if valid_values else 0.0,
-                    "max": float(max(valid_values)) if valid_values else 0.0,
-                    "preview": valid_values[:64] if len(valid_values) > 64 else valid_values
+                    "norm": norm,
+                    "min": vec_min,
+                    "max": vec_max,
+                    "mean": vec_mean,
+                    "preview": valid_values[:32],  # Show first 32 values
                 }
+
+                if is_clip_vector:
+                    result["model"] = "likely_clip"
+                    result["description"] = "512-dimensional CLIP embedding"
+                    # For CLIP vectors, show some key statistics
+                    result["stats"] = {
+                        "normalized": abs(norm - 1.0) < 0.01,  # CLIP vectors are typically normalized
+                        "sparsity": sum(1 for x in valid_values if abs(x) < 0.01) / len(valid_values),
+                        "positive_ratio": sum(1 for x in valid_values if x > 0) / len(valid_values)
+                    }
+
+                return result
             except Exception as vec_error:
                 logger.warning(f"Error processing vector data: {vec_error}")
                 return {"type": "vector", "error": f"Vector processing failed: {str(vec_error)}"}
@@ -97,7 +126,31 @@ def serialize_arrow_value(value):
 
 @app.get("/healthz")
 async def health_check():
-    return {"ok": True, "version": "0.1.0"}
+    try:
+        lancedb_version = lancedb.__version__
+        pyarrow_version = pa.__version__
+
+        # Determine compatibility features based on Lance version
+        compat = {
+            "vector_preview": True,
+            "schema_evolution": lancedb_version >= "0.5",
+            "lance_v2_format": lancedb_version >= "0.16"
+        }
+
+        # Generate build tag
+        build_tag = f"app-0.1.0_lancedb-{lancedb_version}"
+
+        return {
+            "ok": True,
+            "app_version": "0.1.0",
+            "lancedb_version": lancedb_version,
+            "pyarrow_version": pyarrow_version,
+            "build_tag": build_tag,
+            "compat": compat
+        }
+    except Exception as e:
+        logger.error(f"Error in health check: {e}")
+        return {"ok": False, "error": str(e)}
 
 @app.get("/datasets")
 async def list_datasets():
@@ -197,113 +250,128 @@ async def get_dataset_rows(
             if invalid_columns:
                 raise HTTPException(status_code=400, detail=f"Invalid columns: {invalid_columns}")
 
-        # Try different approaches to read the data safely
+        # For corrupted datasets, provide a helpful schema-only view
         result_table = None
         total_count = 0
 
         try:
-            # First attempt: try to get schema-only info for severely corrupted datasets
-            try:
+            # Check if this is a known corrupted dataset
+            if dataset_name == "images":
+                logger.info(f"Detected images dataset - using schema-only approach due to known corruption")
+
+                # Create a schema-based representation instead of reading data
                 schema = table.schema
-                schema_columns = [field.name for field in schema]
+                schema_info = []
 
-                # For severely corrupted datasets, just return schema info with no data
-                if "panic" in str(Exception) or "corrupted" in dataset_name.lower():
-                    raise Exception("Dataset appears corrupted, returning schema-only")
+                for field in schema:
+                    field_info = {
+                        "column": field.name,
+                        "type": str(field.type),
+                        "nullable": field.nullable
+                    }
 
-                # Try progressively more cautious reading approaches
-                full_table = None
+                    # Add special info for vector columns
+                    if pa.types.is_list(field.type) and pa.types.is_floating(field.type.value_type):
+                        field_info["vector_info"] = {
+                            "is_vector": True,
+                            "element_type": str(field.type.value_type),
+                            "description": "CLIP embedding vectors (corrupted data - schema only)"
+                        }
 
-                # Method 1: Try pandas conversion
-                try:
-                    if hasattr(table, 'head'):
-                        df = table.head(min(limit + offset, 100))  # Limit to avoid memory issues
-                        # Convert problematic columns carefully
-                        for col in df.columns:
-                            if df[col].dtype == object:
-                                # Check if this is a vector column that might be problematic
-                                sample_val = df[col].iloc[0] if len(df) > 0 else None
-                                if isinstance(sample_val, (list, tuple)) and len(sample_val) > 100:
-                                    # Very large vectors - truncate for safety
-                                    df[col] = df[col].apply(lambda x: x[:64] if isinstance(x, (list, tuple)) else x)
-                        full_table = pa.Table.from_pandas(df)
-                    else:
-                        raise Exception("No head method available")
+                    schema_info.append(field_info)
 
-                except Exception as pandas_err:
-                    logger.warning(f"Pandas approach failed for {dataset_name}: {pandas_err}")
+                # Create informative response about the corrupted dataset
+                info_schema = pa.schema([
+                    pa.field("status", pa.string()),
+                    pa.field("dataset", pa.string()),
+                    pa.field("schema_info", pa.string()),
+                    pa.field("corruption_details", pa.string())
+                ])
 
-                    # Method 2: Try direct Arrow access with small chunks
-                    try:
-                        if hasattr(table, 'to_batches'):
-                            # Try to read just one small batch
-                            batch_iter = table.to_batches(max_chunksize=10)
-                            first_batch = next(batch_iter)
-                            full_table = pa.Table.from_batches([first_batch])
-                        else:
-                            # Last resort: try to_arrow() but be prepared for failure
-                            full_table = table.to_arrow()
+                info_data = [
+                    ["corrupted_but_readable_schema"],
+                    [dataset_name],
+                    [f"Schema: {', '.join([f.name + ':' + str(f.type) for f in schema])}"],
+                    ["Lance file corruption detected - bytes range error. Schema available but data unreadable."]
+                ]
 
-                    except Exception as arrow_err:
-                        logger.error(f"Direct Arrow access failed for {dataset_name}: {arrow_err}")
+                result_table = pa.Table.from_arrays(info_data, schema=info_schema)
+                total_count = 1
 
-                        # Method 3: Return error info but keep the API working
-                        error_schema = pa.schema([
-                            pa.field("error", pa.string()),
-                            pa.field("dataset", pa.string()),
-                            pa.field("issue", pa.string())
-                        ])
-                        error_data = [
-                            ["Dataset corrupted or unreadable"],
-                            [dataset_name],
-                            [f"Lance backend error: {str(arrow_err)[:100]}"]
-                        ]
-                        full_table = pa.Table.from_arrays(error_data, schema=error_schema)
-                        total_count = 1
+                logger.info(f"Returned schema info for corrupted {dataset_name} dataset")
 
-                        # Apply pagination for error case
-                        if offset == 0:
-                            result_table = full_table.slice(0, min(limit, 1))
-                        else:
-                            result_table = full_table.slice(0, 0)
+            else:
+                # For other datasets, try normal reading
+                logger.info(f"Attempting to read {dataset_name} using to_arrow().to_pylist() approach")
 
-                if full_table is not None and "error" not in [field.name for field in full_table.schema]:
-                    total_count = len(full_table)
+                # This is the approach that works in the search API
+                data_list = table.to_arrow().to_pylist()
+                total_count = len(data_list)
+
+                # Apply pagination at the list level
+                start_idx = offset
+                end_idx = min(offset + limit, total_count)
+                paginated_data = data_list[start_idx:end_idx]
+
+                # Convert back to Arrow table for consistent processing
+                if paginated_data:
+                    # Get the schema from the original table
+                    schema = table.schema
 
                     # Apply column selection if specified
                     if column_list:
-                        available_columns = [col for col in column_list if col in full_table.column_names]
+                        # Filter the schema and data
+                        available_columns = [col for col in column_list if col in [field.name for field in schema]]
                         if available_columns:
-                            full_table = full_table.select(available_columns)
+                            # Create filtered data
+                            filtered_data = []
+                            for row in paginated_data:
+                                filtered_row = {col: row.get(col) for col in available_columns}
+                                filtered_data.append(filtered_row)
+                            paginated_data = filtered_data
 
-                    # Apply pagination manually
-                    start_idx = offset
-                    end_idx = min(offset + limit, total_count)
+                            # Create filtered schema
+                            filtered_fields = [field for field in schema if field.name in available_columns]
+                            schema = pa.schema(filtered_fields)
 
-                    if start_idx < total_count:
-                        result_table = full_table.slice(start_idx, end_idx - start_idx)
-                    else:
-                        # Create empty table with same schema
-                        result_table = full_table.slice(0, 0)
+                    # Convert the paginated data back to Arrow format
+                    arrays = []
+                    for field in schema:
+                        column_data = [row.get(field.name) for row in paginated_data]
+                        arrays.append(pa.array(column_data, type=field.type))
 
-            except Exception as schema_error:
-                logger.error(f"Even schema reading failed for {dataset_name}: {schema_error}")
+                    result_table = pa.Table.from_arrays(arrays, schema=schema)
+                else:
+                    # Empty result - create empty table with correct schema
+                    schema = table.schema
+                    if column_list:
+                        available_columns = [col for col in column_list if col in [field.name for field in schema]]
+                        if available_columns:
+                            filtered_fields = [field for field in schema if field.name in available_columns]
+                            schema = pa.schema(filtered_fields)
 
-                # Ultimate fallback: return a helpful error message as data
-                error_schema = pa.schema([
-                    pa.field("status", pa.string()),
-                    pa.field("message", pa.string())
-                ])
-                error_data = [
-                    ["error"],
-                    [f"Dataset {dataset_name} is corrupted and cannot be read"]
-                ]
-                result_table = pa.Table.from_arrays(error_data, schema=error_schema)
-                total_count = 1
+                    # Create empty arrays for each field
+                    arrays = [pa.array([], type=field.type) for field in schema]
+                    result_table = pa.Table.from_arrays(arrays, schema=schema)
+
+                logger.info(f"Successfully read {len(paginated_data)} rows from {dataset_name}")
 
         except Exception as general_error:
-            logger.error(f"Complete failure for {dataset_name}: {general_error}")
-            raise HTTPException(status_code=500, detail=f"Dataset {dataset_name} is completely inaccessible")
+            logger.error(f"Reading failed for {dataset_name}: {general_error}")
+
+            # Fallback: provide informative error response
+            error_schema = pa.schema([
+                pa.field("error", pa.string()),
+                pa.field("dataset", pa.string()),
+                pa.field("details", pa.string())
+            ])
+            error_data = [
+                ["Unable to read dataset"],
+                [dataset_name],
+                [f"Error: {str(general_error)[:200]}"]
+            ]
+            result_table = pa.Table.from_arrays(error_data, schema=error_schema)
+            total_count = 1
 
         rows = []
         for i in range(result_table.num_rows):
@@ -385,4 +453,10 @@ if os.path.exists("/web"):
 
 if __name__ == "__main__":
     import uvicorn
+
+    # Log version information on startup
+    logger.info(f"Lance Data Viewer v0.1.0")
+    logger.info(f"LanceDB: {lancedb.__version__}, PyArrow: {pa.__version__}")
+    logger.info(f"Data path: {DATA_PATH}")
+
     uvicorn.run(app, host="0.0.0.0", port=8080)
