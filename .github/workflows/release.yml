@@ -94,7 +94,7 @@ jobs:
         import pyarrow
         from fastapi.testclient import TestClient
 
-        client = TestClient(app.app)
+        client = TestClient(app)
 
         # Print version information
         print(f'Testing with LanceDB {lancedb.__version__}, PyArrow {pyarrow.__version__}')
