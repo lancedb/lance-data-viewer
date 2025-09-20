@@ -62,7 +62,15 @@ class LanceViewer {
             const response = await fetch(`${this.apiBase}/healthz`);
             const data = await response.json();
             if (data.ok) {
-                this.elements.healthStatus.textContent = `Healthy (v${data.version})`;
+                // Show Lance version prominently along with app version
+                const lanceVersion = data.lancedb_version || 'unknown';
+                const pyarrowVersion = data.pyarrow_version || 'unknown';
+                this.elements.healthStatus.innerHTML = `
+                    <div class="version-info">
+                        <div class="app-version">Lance Data Viewer v${data.app_version}</div>
+                        <div class="lance-version">LanceDB ${lanceVersion} • PyArrow ${pyarrowVersion}</div>
+                    </div>
+                `;
                 this.elements.healthStatus.className = 'health-status healthy';
             } else {
                 throw new Error('Health check failed');
@@ -122,11 +130,20 @@ class LanceViewer {
             this.elements.schemaDisplay.innerHTML = '';
             schema.fields.forEach(field => {
                 const fieldDiv = document.createElement('div');
-                fieldDiv.className = field.type.includes('list<item: double>') ? 'schema-field vector' : 'schema-field';
+                const isVector = field.type.includes('list<item: double>') || field.type.includes('fixed_size_list<item: float>');
+                fieldDiv.className = isVector ? 'schema-field vector' : 'schema-field';
 
-                const typeDisplay = field.type.includes('list<item: double>')
-                    ? `${field.name}: vector (${field.type})`
-                    : `${field.name}: ${field.type}`;
+                let typeDisplay;
+                if (isVector) {
+                    // Check if this is a CLIP vector
+                    if (field.type.includes('[512]')) {
+                        typeDisplay = `${field.name}: CLIP vector (512-dim float)`;
+                    } else {
+                        typeDisplay = `${field.name}: vector (${field.type})`;
+                    }
+                } else {
+                    typeDisplay = `${field.name}: ${field.type}`;
+                }
 
                 fieldDiv.textContent = typeDisplay;
                 this.elements.schemaDisplay.appendChild(fieldDiv);
@@ -253,12 +270,32 @@ class LanceViewer {
     renderVectorCell(cell, vectorData, columnName) {
         cell.className = 'vector-cell';
 
+        // Handle error cases
+        if (vectorData.error) {
+            cell.className = 'vector-cell error';
+            cell.textContent = `Vector Error: ${vectorData.error}`;
+            return;
+        }
+
         const container = document.createElement('div');
         container.className = 'vector-preview';
 
         const info = document.createElement('div');
         info.className = 'vector-info';
-        info.textContent = `dim: ${vectorData.dim}, norm: ${vectorData.norm.toFixed(3)}`;
+
+        // Enhanced info display for CLIP vectors
+        if (vectorData.model === 'likely_clip') {
+            info.innerHTML = `
+                <span class="vector-model">CLIP</span>
+                <span class="vector-dim">dim: ${vectorData.dim}</span>
+                <span class="vector-norm">norm: ${vectorData.norm.toFixed(3)}</span>
+            `;
+            if (vectorData.stats && vectorData.stats.normalized) {
+                info.classList.add('normalized');
+            }
+        } else {
+            info.textContent = `dim: ${vectorData.dim}, norm: ${vectorData.norm.toFixed(3)}`;
+        }
 
         const canvas = document.createElement('canvas');
         canvas.className = 'vector-sparkline';
@@ -316,15 +353,31 @@ class LanceViewer {
         const tooltip = this.elements.tooltip;
         const content = tooltip.querySelector('.tooltip-content');
 
-        content.innerHTML = `
-            <strong>${columnName}</strong><br>
-            Dimension: ${vectorData.dim}<br>
-            Norm: ${vectorData.norm.toFixed(4)}<br>
-            Min: ${vectorData.min.toFixed(4)}<br>
-            Max: ${vectorData.max.toFixed(4)}<br>
-            Preview: [${vectorData.preview.slice(0, 8).map(v => v.toFixed(2)).join(', ')}...]
-        `;
+        let tooltipHtml = `<strong>${columnName}</strong><br>`;
 
+        if (vectorData.model === 'likely_clip') {
+            tooltipHtml += `
+                <span class="model-badge">CLIP Embedding</span><br>
+                ${vectorData.description}<br><br>
+                Dimension: ${vectorData.dim}<br>
+                Norm: ${vectorData.norm.toFixed(4)} ${vectorData.stats.normalized ? '(normalized ✓)' : ''}<br>
+                Range: ${vectorData.min.toFixed(4)} to ${vectorData.max.toFixed(4)}<br>
+                Mean: ${vectorData.mean.toFixed(4)}<br>
+                Sparsity: ${(vectorData.stats.sparsity * 100).toFixed(1)}%<br>
+                Positive ratio: ${(vectorData.stats.positive_ratio * 100).toFixed(1)}%<br><br>
+                Preview: [${vectorData.preview.slice(0, 8).map(v => v.toFixed(3)).join(', ')}...]
+            `;
+        } else {
+            tooltipHtml += `
+                Dimension: ${vectorData.dim}<br>
+                Norm: ${vectorData.norm.toFixed(4)}<br>
+                Min: ${vectorData.min.toFixed(4)}<br>
+                Max: ${vectorData.max.toFixed(4)}<br>
+                Preview: [${vectorData.preview.slice(0, 8).map(v => v.toFixed(2)).join(', ')}...]
+            `;
+        }
+
+        content.innerHTML = tooltipHtml;
         tooltip.style.display = 'block';
         this.updateTooltipPosition(event);
     }
