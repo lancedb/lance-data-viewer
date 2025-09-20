@@ -94,11 +94,9 @@ jobs:
         import pyarrow
         from fastapi.testclient import TestClient
 
-        # Try both TestClient syntaxes for compatibility across Lance versions
-        try:
-            client = TestClient(app.app)
-        except TypeError:
-            client = TestClient(app)
+        # Get the FastAPI app instance from the module
+        fastapi_app = getattr(app, 'app', app)
+        client = TestClient(fastapi_app)
 
         # Print version information
         print(f'Testing with LanceDB {lancedb.__version__}, PyArrow {pyarrow.__version__}')
