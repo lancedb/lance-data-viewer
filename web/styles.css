@@ -122,12 +122,22 @@ header h1 {
     padding: 20px;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .dataset-header {
     margin-bottom: 20px;
     padding-bottom: 16px;
     border-bottom: 1px solid #dee2e6;
+}
+
+.data-section {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .header-row {
