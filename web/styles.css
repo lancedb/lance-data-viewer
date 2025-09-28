@@ -123,12 +123,21 @@ header h1 {
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .dataset-header {
     margin-bottom: 20px;
     padding-bottom: 16px;
     border-bottom: 1px solid #dee2e6;
+}
+
+.data-section {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .header-row {
@@ -226,14 +235,17 @@ header h1 {
 }
 
 .table-container {
-    overflow: auto;
+    overflow-x: auto;
+    overflow-y: auto;
     max-height: 70vh;
     border: 1px solid #dee2e6;
     border-radius: 6px;
+    position: relative;
 }
 
 table {
-    width: 100%;
+    min-width: 100%;
+    width: max-content;
     border-collapse: collapse;
     font-size: 0.9rem;
 }
@@ -248,12 +260,15 @@ table th {
     position: sticky;
     top: 0;
     z-index: 10;
+    min-width: 100px;
+    white-space: nowrap;
 }
 
 table td {
     padding: 10px 8px;
     border-bottom: 1px solid #f1f3f4;
     vertical-align: top;
+    min-width: 100px;
 }
 
 table tr:hover {
